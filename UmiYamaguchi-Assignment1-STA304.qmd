@@ -1,0 +1,315 @@
+---
+title: "Comparing Phone and Web Surveys: How Methodology Shapes Educational Distributions and Election Interest"
+author: "Umi Yamaguchi - 1008977369"
+subtitle: "STA304 - Winter 2025 - Assignment 1"
+geometry: margin=2.5cm
+format: pdf
+editor: visual
+fontfamily: times
+output: 
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r, include = FALSE}
+
+# Here you can load in and clean the data (you may need to do the cleaning in a separate R script - this is up to you). 
+library(tidyverse)
+
+phone_data <- read_csv("ces_phone.csv")
+web_data <- read_csv("ces_web.csv")
+
+# You may need additional chunks, in case you want to include some of the cleaning output.
+```
+
+```{r, include=FALSE}
+# Cleaning and filtering for the web_data. Filter the age that is greater than 18 for accurate results.
+
+# Filter the education that have NA and (12: Don't know/Prefer not to answer).
+# Also categorize it with four.  
+# Reference: https://www23.statcan.gc.ca/imdb/p3VD.pl?Function=getVD&TVD=305734&CVD=305735&CLV=0&MLV=4&D=1
+
+web_data_clean <- web_data %>%
+  filter(cps19_yob >= 18) %>%
+  filter(!is.na(cps19_education)) %>%
+  filter(cps19_education != 12) %>%
+  mutate(education_grouped = case_when(
+    cps19_education %in% 1:4  ~ "Below High School",
+    cps19_education == 5      ~ "Secondary Diploma",
+    cps19_education %in% 6:8  ~ "Some College/University",
+    cps19_education %in% 9:11 ~ "Postsecondary Degree"
+  ))
+
+# Cleaning and filtering for the phone_data.
+# Remove unknown: (-9, -8, -7)
+phone_data_clean <- phone_data %>%
+  filter(age >= 18) %>%
+  filter(q61 > 0) %>%
+  mutate(education_grouped = case_when(
+    q61 %in% 1:4  ~ "Below High School",
+    q61 == 5      ~ "Secondary Diploma",
+    q61 %in% 6:8  ~ "Some College/University",
+    q61 %in% 9:11 ~ "Postsecondary Degree"
+  ))
+
+
+# Here you can clean the outcome variable data. 
+
+# Clean and categorize web survey data in three interest levels
+web_data_outcome <- web_data_clean %>%
+  filter(!is.na(cps19_interest_elxn_1)) %>%
+  mutate(interest_category = case_when(
+    cps19_interest_elxn_1 %in% c(0, 1, 2, 3, 4) ~ "Low Interest",
+    cps19_interest_elxn_1 %in% c(5, 6, 7) ~ "Moderate Interest",
+    cps19_interest_elxn_1 %in% c(8, 9, 10) ~ "High Interest"
+  ))
+
+# Categorize phone survey interest levels
+phone_data_outcome <- phone_data_clean %>%
+  filter(q9 >= 0) %>%  # Remove invalid responses (-9, -8, -7)
+  mutate(interest_category = case_when(
+    q9 %in% c(0, 1, 2, 3, 4) ~ "Low Interest",
+    q9 %in% c(5, 6, 7) ~ "Moderate Interest",
+    q9 %in% c(8, 9, 10) ~ "High Interest"
+  ))
+
+```
+
+# 1 Introduction
+
+<!-- In this section you will briefly describe your report. Explain the importance of the subsequent analysis and prepare the reader for what they will read in the subsequent sections. Explain the goal/topic of the survey/study and the TWO variables you selected of interest here. It might be helpful to explain why you chose your particular demographic variable and your particular outcome variable to investigate. Be sure to give rationale as to why investigating these variables is important to the study/inference. If you wish to **bold** or *italicize* your variable names, please do. Define the target, frame and sample population. -->
+
+This report compares phone and web survey methodologies using data from the 2019 Canadian Election Study (CES) [1]. The central goal is to explore how the mode of data collection might influence demographic representation and reported political attitudes. Differences in respondent demographics and reported levels of political interest can lead to distinct inferences about Canadian voters.
+
+For the demographic variable, I selected *Education* (categorized into four groups), which is a key predictor of many social and political outcomes. For the outcome of interest, I chose *Interest in the Canadian federal election* (scored from 0–10). Since election interest strongly correlates with political participation and voting behavior, comparing it between phone and web respondents illustrates how survey mode may shape one’s understanding of the electorate. In these analyses, the *target population* is Canadian adults eligible to vote (18+), the *frame population* is individuals reachable by phone or with reliable internet access, and the *sample population* consists of respondents who agreed to complete the phone or web-based CES questionnaire. Any differences across these populations will be central to interpreting the results.
+
+# 2 Data
+
+<!-- Briefly introduce the data and key variables of interest. If you do any general data cleaning or data processing you should describe it (in a reproducible manner) here. It might be helpful to clearly define the variables of interest (i.e., the ones you will present in the subsequent sections) here, along with any data cleaning you did to these variables. -->
+
+The analysis utilizes two cleaned CES datasets: one from the **phone survey** (*ces_phone.csv*) and another from the **web survey** (*ces_web.csv*). Both contain demographic information (e.g., age, education) and a measure of interest in the 2019 Canadian federal election (0 = *No interest*, 10 = *High interest*). Several steps ensured that the data focused on eligible and valid responses. Participants under 18 were removed, “Don’t know” and “Prefer not to answer” responses for education were excluded, and invalid or missing interest responses were dropped. Education was then grouped into four categories (Below High School, Secondary Diploma, Some College/University, Postsecondary Degree), reflecting broad levels of educational attainment [2]. Interest in the election was classified into Low (0–4), Moderate (5–7), or High (8–10).
+
+Because the web survey dataset initially had more respondents than the phone survey, the both dataset was randomly downsampled to match the same lengths. This balanced approach helps ensure that any differences observed are not simply due to vastly different sample sizes. The resulting datasets contain equally sized phone and web samples, allowing direct comparisons between the two survey modes [3].
+
+```{r, include = FALSE}
+
+# Here you can clean the demographic variable data. 
+
+# Limitation: Random Sampling, Loss of data, Less precise estimates for large population
+
+# Find the smaller sample size
+web_sample_size <- nrow(web_data_clean)
+phone_sample_size <- nrow(phone_data_clean)
+
+min_sample_size <- min(web_sample_size, phone_sample_size)
+
+# Downsample the larger dataset to match the smaller one
+set.seed(123)  # For reproducibility
+
+if (web_sample_size > phone_sample_size) {
+  web_data_sampled <- web_data_clean %>% sample_n(min_sample_size)
+  phone_data_sampled <- phone_data_clean  # No change for phone data
+} else {
+  phone_data_sampled <- phone_data_clean %>% sample_n(min_sample_size)
+  web_data_sampled <- web_data_clean  # No change for web data
+}
+
+# Add survey type columns
+web_data_sampled$survey_type <- "Web"
+phone_data_sampled$survey_type <- "Phone"
+
+# Combine the datasets
+balanced_data <- bind_rows(web_data_sampled, phone_data_sampled)
+
+# Count the number of samples for each education category
+education_counts <- balanced_data %>%
+  group_by(education_grouped) %>%
+  summarise(count = n()) %>%
+  arrange(count)  # Arrange in order of count
+
+# Reorder factor levels in the dataset based on frequency
+balanced_data <- balanced_data %>%
+  mutate(education_grouped = factor(education_grouped, 
+                                    levels = education_counts$education_grouped))
+
+```
+
+```{r, include = FALSE}
+# Find the smaller sample size
+web_sample_size_out <- nrow(web_data_outcome)
+phone_sample_size_out <- nrow(phone_data_outcome)
+
+min_sample_size_out <- min(web_sample_size_out, phone_sample_size_out)
+
+# Downsample the larger dataset to match the smaller one
+set.seed(123)  # For reproducibility
+
+if (web_sample_size_out > phone_sample_size_out) {
+  web_data_sampled_out <- web_data_outcome %>% sample_n(min_sample_size_out)
+  phone_data_sampled_out <- phone_data_outcome  # No change for phone data
+} else {
+  phone_data_sampled_out <- phone_data_outcome %>% sample_n(min_sample_size_out)
+  web_data_sampled_out <- web_data_outcome  # No change for web data
+}
+
+
+# Combine data for visualization
+combined_interest_data <- bind_rows(
+  web_data_sampled_out %>% mutate(survey_type = "Web"),
+  phone_data_sampled_out %>% mutate(survey_type = "Phone")
+)
+
+
+interest_counts <- combined_interest_data %>%
+  group_by(interest_category) %>%
+  summarise(count = n()) %>%
+  arrange(count) 
+
+
+interest_data <- combined_interest_data %>%
+  mutate(interest_category = factor(interest_category, 
+                                    levels = interest_counts$interest_category))
+```
+
+# 3 Demographic Variables
+
+<!-- Clearly state what your demographic variable is, and give a brief explanation of why you chose it. Create a visualization the same visualization of the distribution of the demographic variable across the two surveys (phone vs. web) -->
+
+
+The demographic variable under examination is *Education*, which is significant because individuals’ educational attainment is associated with political knowledge, voter turnout, and policy preferences [5]. By comparing the distribution of education levels in the phone survey versus the web survey, we can observe whether one mode tends to draw participants of a particular educational background. Measuring the target population (all eligible Canadian voters) through different survey modes introduces potential biases in how well each method represents the broader electorate. The frame population, consisting of individuals reachable by phone or with reliable internet access, may not fully capture certain demographic groups, such as older individuals who may be more likely to respond to phone surveys or younger, tech-savvy individuals who prefer web surveys. These accessibility differences can influence the educational composition of respondents, leading to an overrepresentation of individuals with higher education levels in phone surveys and those with intermediate educational backgrounds in web surveys.
+
+Figures present side-by-side bar charts of education categories (Figure 1 and Figure 2). One chart displays the raw counts for each education group, while the other shows the proportions within each survey type. The sample population, composed of those who actually participated in each survey, reflects the biases inherent in each mode. The phone survey, for instance, tends to include a larger share of respondents in the Postsecondary Degree category. In contrast, the web survey includes more participants in the Some College/University group. These discrepancies suggest that different sampling or accessibility mechanisms—whether related to age, technological familiarity, or respondent preferences—are influencing who ends up in each dataset. Recognizing these differences is important when drawing broader conclusions about Canadians’ educational profile. Understanding the effects of survey mode on population representation highlights the importance of considering these biases when interpreting results and making inferences about the entire population [4].
+
+
+```{r, echo = FALSE, fig.height= 3.5, fig.width= 10, fig.cap="Comparison of Education Levels by Survey Mode. The bar chart shows the distribution of education levels across phone and web survey respondents, highlighting differences in sample composition."}
+
+# Testing the visualization of demograpphic variable (Education).
+ggplot(balanced_data, aes(x = education_grouped, fill = survey_type)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Comparison of Education Levels: Web vs Phone Survey",
+       x = "Education Level",
+       y = "Count",
+       fill = "Survey Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Web" = "steelblue", "Phone" = "coral")) +
+  theme(axis.text.x = element_text(angle = 8, hjust = 0.5, size=13), text = element_text(family = "Times"))
+```
+
+```{r, echo = FALSE, fig.height= 3, fig.width= 10, fig.cap="Proportion of Education Levels by Survey Type. This stacked bar chart displays the relative proportions of education levels within each survey type (phone vs. web), highlighting differences in respondent composition across educational categories."}
+
+ggplot(balanced_data, aes(x = survey_type, fill = education_grouped)) +
+  geom_bar(position = "fill") +
+  labs(title = "Proportion of Education Levels by Survey Type",
+       x = "Survey Type",
+       y = "Proportion",
+       fill = "Education Level") +
+  theme_minimal() +
+  scale_fill_manual(values = c("steelblue", "coral", "lightgreen", "purple")) +
+  theme(axis.text.x = element_text(angle = 8, hjust = 0.5, size=13), text = element_text(family = "Times")) 
+
+```
+
+<!-- Include a clear description of each of the plot(s)/visualization(s). Be sure to highlight any key differences and/or similarities between the two plots and how this relays to the population(s). Comment on the effects of measuring the target, frame and sample population. -->
+
+# 4 Outcome of Interest
+
+<!-- Clearly state what your outcome variable is, and give a brief explanation of why you chose it. You will analyze this outcome in both datasets. For each survey (phone and web) the formula used for the confidence interval should also be presented and referenced \[2\]: -->
+
+<!-- $$\bar{X} \pm \chi_{\alpha/2} \sqrt{\frac{1+1}{n}}$$ -->
+
+The outcome variable is *Interest in the Canadian federal election*, measured on an 11-point scale (0–10). This outcome sheds light on public engagement in politics; in general, higher interest predicts greater likelihood of voting. Given that survey mode can affect who responds, we compare whether phone or web surveys produce distinct estimates of election interest.
+
+A table in the final report summarizes the proportion of respondents classified as “High Interest” (8–10) for each survey mode. A 95% confidence interval (CI) for these proportions was computed using the typical formula for a proportion:
+
+$\hat{p} \pm z_{\frac{\alpha}{2}} \sqrt{\frac{\hat{p}(1-\hat{p})}{n}}$,
+
+where $\hat{p}$ is the sample proportion of “High Interest” respondents, $z_{\frac{\alpha}{2}} \approx 1.96$ for a 95% confidence level, and $n$ is the sample size. 
+
+<!-- The phone survey yielded a higher proportion of “High Interest” participants, and the confidence intervals showed that these phone-based estimates do not overlap with the web-based estimates. This finding suggests a significant discrepancy between the two modes: phone respondents were noticeably more likely to report high interest in the election, compared to those who took the web survey. -->
+
+The Figure 3 illustrates differences in reported political interest levels between respondents from phone and web surveys. The phone survey shows a higher number of respondents reporting High Interest, whereas the web survey captures more participants in the Low Interest category. This suggests potential differences in self-selection bias, with phone respondents possibly being more engaged in political matters than their web-based counterparts. The moderate interest levels appear relatively similar across both survey types, indicating some consistency in mid-level engagement. These findings suggest that survey mode may influence the distribution of political interest responses, potentially affecting conclusions drawn from the data regarding overall public engagement in political processes.
+
+```{r, echo = FALSE, fig.height= 3.5, fig.width= 10, fig.cap="Comparison of Interest Levels by Survey Type. The bar chart compares political interest levels across phone and web survey respondents. The phone survey has more respondents with High Interest, while the web survey shows a slightly higher proportion of Low Interest respondents."}
+
+# Testing the visualization of demograpphic variable (Education).
+ggplot(interest_data, aes(x = interest_category, fill = survey_type)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Comparison of Interest Levels: Web vs Phone Survey",
+       x = "Interest Category",
+       y = "Count",
+       fill = "Survey Type") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Web" = "steelblue", "Phone" = "coral")) +
+  theme(axis.text.x = element_text(angle = 8, hjust = 0.5, size=13), text = element_text(family = "Times"))
+
+
+```
+
+```{r, include = FALSE}
+
+# Here you can run code to calculate your Confidence Intervals.
+calculate_proportion_ci <- function(data, interest_level) {
+  n <- nrow(data)
+  proportion <- mean(data$interest_category == interest_level, na.rm = TRUE)
+  z <- qnorm(0.975)  # 95% confidence level (1.96)
+  
+  # Corrected formula for margin of error
+  margin_of_error <- z * sqrt((proportion * (1 - proportion)) / n)
+
+  ci_lower <- proportion - margin_of_error
+  ci_upper <- proportion + margin_of_error
+  
+  return(c(proportion, ci_lower, ci_upper))
+}
+
+# Calculate CI for web survey
+web_ci <- calculate_proportion_ci(web_data_sampled_out, "High Interest")
+
+# Calculate CI for phone survey
+phone_ci <- calculate_proportion_ci(phone_data_sampled_out, "High Interest")
+
+# Display results
+cat("Web Survey - Proportion:", round(web_ci[1], 3), 
+    "95% CI: [", round(web_ci[2], 3), ",", round(web_ci[3], 3), "]\n")
+
+cat("Phone Survey - Proportion:", round(phone_ci[1], 3), 
+    "95% CI: [", round(phone_ci[2], 3), ",", round(phone_ci[3], 3), "]\n")
+
+```
+
+<!-- In Table 1 I present both confidence intervals of... Compare the confidence intervals of the same outcome of the two surveys. Be sure to highlight any key differences and/or similarities between the two CIs and how this relays to the populations at hand (i.e., about the Canadian electorate's behavior or opinions). -->
+
+The 95% confidence intervals (CIs) for the proportion of respondents reporting High Interest in the election reveal critical differences and insights:
+
+|              | Proportion of Outcome Variable | 95% Confidence Interval of Outcome Variable |
+|------------------------|------------------------|------------------------|
+| Phone Survey | 0.565                          | (0.55, 0.581)                               |
+| Web Survey   | 0.499                          | (0.484, 0.515)                              |
+
+<!-- : The proportions and 95% confidence intervals of outcome variable of interest calculated for both the Canadian Election Study 2019 phone and web survey data. -->
+
+The CIs for phone ($0.550 \sim 0.581$) and web ($0.484 \sim 0.515$) surveys do not overlap, indicating a statistically significant difference in reported interest between modes. This suggests that survey mode systematically influences responses, rather than random sampling variation. The phone survey’s proportion of high-interest respondents (56.5%) is 6.6 percentage points higher than the web survey’s (49.9%). This gap exceeds the margin of error for both surveys ($\sim 3.1$ percentage points), reinforcing the practical significance of the disparity. Lastly, both modes exclude populations without phone/internet access, potentially underestimating interest among marginalized groups.
+
+While the phone survey suggests higher electoral engagement, this finding may not generalize to the broader Canadian electorate due to frame bias (e.g. exclusion of non-phone/internet users). The web survey’s lower interest estimates may better reflect younger demographics but underrepresent older voters. These discrepancies highlight the need for mixed-mode surveys or weighting adjustments to improve population-level inferences.
+
+# 5 Comparative Analysis
+
+<!-- Here you will write a few paragraphs with a general reflection commenting on: demographic differences, biases/errors, and implications for analysis. -->
+
+A comparison of the two survey modes points to potentially substantial differences in demographic composition and political engagement. The phone sample contained a larger fraction of participants with higher formal education, which may reflect patterns of landline usage or the fact that older, more highly educated individuals are more likely to take part in phone surveys. Meanwhile, the web survey included more respondents who had only partial postsecondary education. This mode might be more appealing or accessible to younger, more technology-driven individuals, leading to a different educational distribution.
+
+Various biases emerge from these observations. Mode differences can generate coverage errors, as each approach might miss segments of the population without consistent phone or internet access. Selection bias is another concern, since opting into one survey type may correlate with traits like age, education, or political predisposition. These discrepancies have direct implications for analyzing election interest. If the phone survey systematically reaches more politically attentive participants (or those inclined to say they are interested), the reported interest levels may appear higher than in the web survey. Consequently, policy researchers or political campaigns relying on only one mode risk overestimating or underestimating true public engagement.
+
+Despite these challenges, both surveys add valuable information when interpreted in context. In principle, analysts can employ weighting or combine multiple survey modes to mitigate skewed distributions. Reflecting on both phone-based and web-based responses enriches our understanding of Canadian voters by exposing the diversity of perspectives and, crucially, the influence of the data-collection method itself.
+
+# 6 Generative AI Statement
+I used an AI-assisted writing tool (ChatGPT) for language suggestions, sentence restructuring, and refining the clarity of my writing, including adjustments to visualization descriptions. AI was consulted to enhance readability in sections such as the introduction, comparative analysis, and figure captions. However, all statistical analysis, data cleaning, and visualizations were independently performed using RStudio and verified against course materials and external references.
+
+AI suggestions were carefully evaluated and incorporated only when they aligned with assignment requirements and my understanding of the subject. The final work reflects my own effort and comprehension, ensuring compliance with academic integrity standards while acknowledging AI as a supplementary tool.
+
+# 7 Bibliography
+1. Hodgetts, P. (2023). *cesR: Canadian Election Study Data in R*. <https://hodgettsp.github.io/cesR/> (Accessed January 20, 2025).
+2. Statistics Canada (2021). *Educational attainment classification*. <https://www23.statcan.gc.ca/imdb/p3VD.pl?Function=getVD&TVD=305734&CVD=305735&CLV=0&MLV=4&D=1> (Accessed January 20, 2025).
+3. Murel, J. IBM (2022). *Downsampling in data analysis*. <https://www.ibm.com/think/topics/downsampling> (Accessed January 20, 2025).
+4. Wickham, H., Chang, W. et al., (2016). *ggplot2: Elegant Graphics for Data Analysis*. <https://ggplot2.tidyverse.org/reference> (Accessed January 20, 2025).
+5. Weinschenk, A., Dawes, C., et al., (2021). *Explaining the Education Gap in Knowledge of Political Facts.* <https://www.tandfonline.com/doi/abs/10.1080/17457289.2021.1952416> (Accessed January 24, 2025).
